@@ -1,0 +1,69 @@
+#!/bin/bash
+set -euo pipefail
+
+# ====== CONFIGURAÇÕES ======
+BASE_DIR="/home/ubuntu/Documentos/Instalador Torus"
+INI="$BASE_DIR/lib/clisitef/CliSiTef.ini"
+INSTALL_DIR="$BASE_DIR/install"
+SERVICES=("toruspdvd" "libssl.service")
+NEW_LINE="TransacoesAdicionaisHabilitadas=60;61;62;63;3315;3218;3379"
+
+# ====== FUNÇÕES AUXILIARES ======
+log()  { echo -e "\n[INFO] $1"; }
+err()  { echo -e "\n[ERRO] $1" >&2; exit 1; }
+ok()   { echo -e "[OK] $1"; }
+
+check_file()   { [ -f "$1" ] || err "Arquivo não encontrado: $1"; }
+check_dir()    { [ -d "$1" ] || err "Pasta não encontrada: $1"; }
+check_service(){ systemctl is-active --quiet "$1" || err "Serviço $1 não está ativo."; }
+
+restart_and_check() {
+    log "Reiniciando $1..."
+    systemctl restart "$1"
+    systemctl status "$1" --no-pager
+    check_service "$1"
+    ok "$1 está ativo."
+}
+
+# ====== EXECUÇÃO ======
+echo "=========================================="
+echo " ALTERAÇÃO E INSTALAÇÃO TORUS"
+echo "=========================================="
+
+# 1. Valida arquivos
+log "[1/5] Verificando arquivos..."
+check_file "$INI"
+check_dir  "$INSTALL_DIR"
+check_file "$INSTALL_DIR/install.sh"
+
+# 2. Backup e alteração do INI
+log "[2/5] Atualizando CliSiTef.ini..."
+BACKUP="$INI.bak_$(date +%Y%m%d_%H%M%S)"
+cp -a "$INI" "$BACKUP" && ok "Backup criado: $BACKUP"
+
+if grep -q "^[[:space:]]*TransacoesAdicionaisHabilitadas=" "$INI"; then
+    sed -i "s|^[[:space:]]*TransacoesAdicionaisHabilitadas=.*|$NEW_LINE|" "$INI"
+else
+    printf "\n%s\n" "$NEW_LINE" >> "$INI"
+fi
+
+grep -q "^$NEW_LINE$" "$INI" || err "Configuração não foi aplicada."
+ok "Configuração aplicada."
+
+# 3. Instalação
+log "[3/5] Executando instalador..."
+cd "$INSTALL_DIR"
+chmod +x ./install.sh
+./install.sh
+
+# 4. Reinicia serviços
+log "[4/5] Reiniciando serviços..."
+for svc in "${SERVICES[@]}"; do
+    restart_and_check "$svc"
+done
+
+# 5. Conclusão
+log "[5/5] Finalizado!"
+echo "=========================================="
+echo " ✅ PROCESSO CONCLUÍDO COM SUCESSO"
+echo "=========================================="
