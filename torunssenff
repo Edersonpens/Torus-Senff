@@ -1,0 +1,106 @@
+sudo bash -c '
+set -e
+
+INI="/home/ubuntu/Documentos/Instalador Torus/lib/clisitef/CliSiTef.ini"
+INSTALL="/home/ubuntu/Documentos/Instalador Torus/install"
+
+NEW="TransacoesAdicionaisHabilitadas=60;61;62;63;3315;3218;3379"
+
+echo "=========================================="
+echo " ALTERAÇÃO E INSTALAÇÃO TORUS"
+echo "=========================================="
+
+echo "[1/8] Verificando arquivo..."
+
+if [ ! -f "$INI" ]; then
+    echo "ERRO: arquivo não encontrado:"
+    echo "$INI"
+    exit 1
+fi
+
+echo "[2/8] Criando backup..."
+
+BACKUP="$INI.bak_$(date +%Y%m%d_%H%M%S)"
+cp -a "$INI" "$BACKUP"
+
+echo "Backup: $BACKUP"
+
+echo "[3/8] Procurando TransacoesAdicionaisHabilitadas..."
+
+if grep -q "^[[:space:]]*TransacoesAdicionaisHabilitadas=" "$INI"; then
+
+    echo "Linha encontrada. Substituindo..."
+
+    sed -i "s|^[[:space:]]*TransacoesAdicionaisHabilitadas=.*|$NEW|" "$INI"
+
+else
+
+    echo "Linha não encontrada. Adicionando ao final do arquivo..."
+
+    printf "\n%s\n" "$NEW" >> "$INI"
+
+fi
+
+echo "[4/8] Validando configuração..."
+
+if ! grep -q "^$NEW$" "$INI"; then
+    echo "ERRO: configuração não foi aplicada."
+    exit 1
+fi
+
+echo "OK: configuração aplicada:"
+grep -n "^$NEW$" "$INI"
+
+echo "[5/8] Entrando na pasta de instalação..."
+
+if [ ! -d "$INSTALL" ]; then
+    echo "ERRO: pasta não encontrada:"
+    echo "$INSTALL"
+    exit 1
+fi
+
+cd "$INSTALL"
+
+if [ ! -f "./install.sh" ]; then
+    echo "ERRO: install.sh não encontrado."
+    exit 1
+fi
+
+echo "[6/8] Executando install.sh..."
+
+chmod +x ./install.sh
+./install.sh
+
+echo "[7/8] Reiniciando toruspdvd..."
+
+service toruspdvd restart
+
+echo "Verificando toruspdvd..."
+service toruspdvd status --no-pager
+
+if ! systemctl is-active --quiet toruspdvd; then
+    echo "ERRO: toruspdvd não está ativo."
+    exit 1
+fi
+
+echo "OK: toruspdvd está ativo."
+
+echo "[8/8] Reiniciando libssl.service..."
+
+systemctl restart libssl.service
+
+echo "Verificando libssl.service..."
+systemctl status libssl.service --no-pager
+
+if ! systemctl is-active --quiet libssl.service; then
+    echo "ERRO: libssl.service não está ativo."
+    exit 1
+fi
+
+echo "OK: libssl.service está ativo."
+
+echo
+echo "=========================================="
+echo " PROCESSO CONCLUÍDO COM SUCESSO"
+echo "=========================================="
+'
